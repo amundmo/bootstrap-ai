@@ -1,6 +1,6 @@
 {
   "name": "automation-ui",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "React UI for Claude Code Automation System",
   "private": true,
   "dependencies": {
@@ -23,7 +23,11 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "version:patch": "npm version patch && git push --follow-tags",
+    "version:minor": "npm version minor && git push --follow-tags",
+    "version:major": "npm version major && git push --follow-tags",
+    "release": "npm run build && npm run version:patch"
   },
   "eslintConfig": {
     "extends": [

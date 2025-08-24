@@ -577,12 +577,12 @@ def analyze_task_type(description: str) -> str:
     description_lower = description.lower()
     title_lower = description.lower()  # We'll get title from task if needed
     
-    # Check for React components first (more specific)
-    if any(phrase in description_lower for phrase in ["login", "form", "button", "component", "modal", "page", "react"]):
-        return "react_component"
-    # Check for UI/styling changes 
-    elif any(phrase in description_lower for phrase in ["background", "color", "style", "css", "theme", "appearance", "ui", "interface", "design"]):
+    # Check for UI/styling changes first (including visibility issues)
+    if any(phrase in description_lower for phrase in ["background", "color", "style", "css", "theme", "appearance", "ui", "interface", "design", "visibility", "visible", "see", "contrast"]):
         return "ui_styling"
+    # Check for React components 
+    elif any(phrase in description_lower for phrase in ["login", "form", "button", "component", "modal", "page", "react"]):
+        return "react_component"
     elif any(phrase in description_lower for phrase in ["unit test", "integration test", "write test", "test for", "testing", "test coverage"]):
         return "testing"
     elif any(word in description_lower for word in ["document", "readme", "guide", "docs", "documentation"]):
@@ -645,29 +645,11 @@ async def handle_react_component_task(task: Dict) -> bool:
         return False
 
 async def change_background_color(color: str) -> bool:
-    """Change the background color of the main application"""
-    try:
-        css_file = "/home/john/dev/personal/bootstrap/src/index.css"
-        
-        # Read current CSS
-        if os.path.exists(css_file):
-            with open(css_file, 'r') as f:
-                content = f.read()
-        else:
-            content = ""
-        
-        # Add or update background color with maximum specificity
-        new_rule = f"""
-/* Auto-generated background color change */
-html, body, #root, .App {{
-    background-color: {color} !important;
-}}
-
-/* Force background color on all elements */
-* {{
-    background-color: {color} !important;
-}}
-"""
+    """DISABLED: Change the background color of the main application"""
+    logger.info(f"Background color change to {color} was requested but disabled to prevent crude styling")
+    return False
+    # DISABLED CRUDE CSS AUTOMATION - Use Claude Code for professional styling instead
+    # This function was generating * { background-color: {color} !important; } which overrides everything
         
         # Remove any existing auto-generated background rules
         lines = content.split('\n')
@@ -789,9 +771,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
 async def apply_general_styling_change(task: Dict) -> bool:
     """Apply general styling changes"""
     try:
-        # Create a simple style change as placeholder
         css_file = "/home/john/dev/personal/bootstrap/src/index.css"
+        task_title = task.get('title', '').lower()
+        task_description = task.get('description', '').lower()
         
+        # Check if this is a visibility improvement task
+        if any(word in task_title + task_description for word in ['visibility', 'visible', 'see', 'contrast', 'readable']):
+            return await fix_visibility_issues()
+        
+        # Default styling change
         new_rule = f"""
 /* Auto-generated styling change for: {task.get('title', 'Unknown task')} */
 .task-styling-change {{
@@ -815,6 +803,97 @@ async def apply_general_styling_change(task: Dict) -> bool:
         
     except Exception as e:
         logger.error(f"Error applying styling change: {e}")
+        return False
+
+async def fix_visibility_issues() -> bool:
+    """DISABLED: Fix visibility issues by improving contrast and readability"""
+    logger.info("Visibility fix was requested but disabled to prevent crude styling")
+    return False
+    # DISABLED CRUDE CSS AUTOMATION - Use Claude Code for professional styling instead
+    # This function was generating !important overrides that conflict with professional CSS
+        
+        # Read current CSS
+        if os.path.exists(css_file):
+            with open(css_file, 'r') as f:
+                content = f.read()
+        else:
+            content = ""
+        
+        # Remove problematic all-black styling
+        lines = content.split('\n')
+        filtered_lines = []
+        skip_block = False
+        
+        for line in lines:
+            if "* {" in line and "background-color" in lines[lines.index(line) + 1] if lines.index(line) + 1 < len(lines) else False:
+                skip_block = True
+                continue
+            if skip_block and line.strip() == "}":
+                skip_block = False
+                continue
+            if not skip_block:
+                filtered_lines.append(line)
+        
+        # Add proper visibility fixes
+        visibility_css = """
+/* Auto-generated visibility improvements */
+body {
+    background-color: #f8f9fa !important;
+    color: #212529 !important;
+}
+
+input, textarea, select {
+    background-color: white !important;
+    color: #212529 !important;
+    border: 1px solid #ced4da !important;
+    padding: 8px 12px !important;
+}
+
+input:focus, textarea:focus, select:focus {
+    background-color: white !important;
+    color: #212529 !important;
+    border-color: #007bff !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25) !important;
+}
+
+button {
+    background-color: #007bff !important;
+    color: white !important;
+    border: 1px solid #007bff !important;
+    padding: 8px 16px !important;
+}
+
+button:hover {
+    background-color: #0056b3 !important;
+    border-color: #0056b3 !important;
+}
+
+.text-gray-900, .text-gray-800, .text-gray-700 {
+    color: #212529 !important;
+}
+
+.bg-white {
+    background-color: white !important;
+}
+
+.bg-gray-100 {
+    background-color: #f8f9fa !important;
+}
+"""
+        
+        # Write improved CSS
+        updated_content = '\n'.join(filtered_lines) + visibility_css
+        
+        with open(css_file, 'w') as f:
+            f.write(updated_content)
+        
+        logger.info("Applied visibility improvements - removed black backgrounds, added proper contrast")
+        await rebuild_frontend()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error fixing visibility: {e}")
         return False
 
 async def create_button_component(task: Dict) -> bool:
@@ -847,12 +926,23 @@ async def create_form_component(task: Dict) -> bool:
 async def create_generic_component(task: Dict) -> bool:
     """Create a generic component"""
     try:
-        component_name = f"Task{task.get('id', 'Unknown')[:8]}"
+        task_id = task.get('id', 'Unknown')
+        if isinstance(task_id, str) and len(task_id) > 8:
+            task_id = task_id[:8]
+        component_name = f"Task{task_id}"
+        
+        title = task.get('title', 'Generated Component')
+        description = task.get('description', 'This component was auto-generated.')
+        
+        # Escape quotes in title and description
+        title = title.replace('"', '\\"').replace("'", "\\'")
+        description = description.replace('"', '\\"').replace("'", "\\'")
+        
         component_code = f"""
 const {component_name} = () => (
   <div className="p-4 m-4 border border-gray-300 rounded">
-    <h3 className="text-lg font-semibold">{task.get('title', 'Generated Component')}</h3>
-    <p className="text-gray-600">{task.get('description', 'This component was auto-generated.')}</p>
+    <h3 className="text-lg font-semibold">{title}</h3>
+    <p className="text-gray-600">{description}</p>
   </div>
 );"""
         

@@ -37,9 +37,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   return (
     <div className="flex flex-col h-full bg-white rounded-lg shadow-lg">
       {/* Chat Header */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-primary-50 rounded-t-lg">
+      <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg">
         <div className="flex items-center">
-          <CpuChipIcon className="h-6 w-6 text-primary-600 mr-2" />
+          <CpuChipIcon className="h-6 w-6 text-blue-600 mr-2" />
           <h2 className="text-lg font-semibold text-gray-900">
             Claude Code Automation Assistant
           </h2>
@@ -80,15 +80,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div
               className={`max-w-[70%] rounded-lg px-4 py-2 ${
                 message.type === 'user'
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm'
                   : message.type === 'system'
-                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
-                  : 'bg-gray-100 text-gray-900'
+                  ? 'bg-yellow-50 text-yellow-800 border border-yellow-200'
+                  : 'bg-gray-50 text-gray-900 border border-gray-200'
               }`}
             >
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               <p className={`text-xs mt-2 ${
-                message.type === 'user' ? 'text-primary-100' : 'text-gray-500'
+                message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
               }`}>
                 {new Date(message.timestamp).toLocaleTimeString()}
               </p>
@@ -122,14 +122,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Describe a development task to automate..."
-            className="flex-1 resize-none border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
             rows={2}
             disabled={isProcessing}
           />
           <button
             onClick={handleSend}
             disabled={!inputValue.trim() || isProcessing}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-all duration-200 shadow-sm hover:shadow-md"
           >
             <PaperAirplaneIcon className="h-5 w-5" />
           </button>
