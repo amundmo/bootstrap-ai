@@ -113,6 +113,17 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Agent Logs -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Agent Logs</h2>
+                    <div id="logsList" class="space-y-2 max-h-64 overflow-y-auto">
+                        <div class="text-center py-8">
+                            <div class="w-8 h-8 bg-gray-400 rounded mx-auto mb-2"></div>
+                            <p class="text-sm text-gray-600">No logs available</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -129,6 +140,7 @@
         const toggleBtn = document.getElementById('toggleBtn');
         const statusDiv = document.getElementById('status');
         const taskList = document.getElementById('taskList');
+        const logsList = document.getElementById('logsList');
 
         // Load initial data
         async function loadStatus() {
@@ -161,6 +173,16 @@
                 renderMessages();
             } catch (error) {
                 console.error('Failed to load messages:', error);
+            }
+        }
+
+        async function loadLogs() {
+            try {
+                const response = await fetch(`${API_BASE}/logs`);
+                const data = await response.json();
+                renderLogs(data.logs);
+            } catch (error) {
+                console.error('Failed to load logs:', error);
             }
         }
 
@@ -290,6 +312,44 @@
             }).join('');
         }
 
+        function renderLogs(logs) {
+            if (logs.length === 0) {
+                logsList.innerHTML = `
+                    <div class="text-center py-8">
+                        <div class="w-8 h-8 bg-gray-400 rounded mx-auto mb-2"></div>
+                        <p class="text-sm text-gray-600">No logs available</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            logsList.innerHTML = logs.map(log => {
+                const levelColors = {
+                    INFO: 'bg-blue-50 text-blue-700 border-blue-200',
+                    ERROR: 'bg-red-50 text-red-700 border-red-200',
+                    WARN: 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                };
+                
+                const level = log.level || 'INFO';
+                const shortMessage = log.message.length > 80 ? log.message.substring(0, 80) + '...' : log.message;
+                
+                return `
+                    <div class="p-2 rounded-lg border ${levelColors[level] || levelColors.INFO}">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <span class="text-xs font-medium">${level}</span>
+                                <p class="text-xs mt-1">${shortMessage}</p>
+                            </div>
+                            <span class="text-xs opacity-75">${new Date(log.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Auto-scroll to bottom
+            logsList.scrollTop = logsList.scrollHeight;
+        }
+
         function updateStatus(status) {
             const statusDot = document.getElementById('statusDot');
             const statusText = document.getElementById('statusText');
@@ -328,13 +388,17 @@
             }
         });
 
-        // Auto-refresh status
-        setInterval(loadStatus, 5000);
+        // Auto-refresh status and logs
+        setInterval(() => {
+            loadStatus();
+            loadLogs();
+        }, 5000);
 
         // Initialize
         loadStatus();
         loadTasks();
         loadMessages();
+        loadLogs();
     </script>
 </body>
 </html>
