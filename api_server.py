@@ -542,68 +542,73 @@ async def get_agent_logs():
         return {"logs": [{"level": "ERROR", "message": f"Failed to read logs: {str(e)}", "timestamp": datetime.now().isoformat()}]}
 
 async def process_task_real(task: Dict) -> bool:
-    """Process a task using real development operations"""
+    """Process a task using Claude Code automation workflow"""
     try:
         task_description = task.get("description", "")
         task_title = task.get("title", "")
         
         logger.info(f"Starting real task processing: {task_title}")
         
-        # Analyze task type and requirements
-        task_type = analyze_task_type(f"{task_title} {task_description}")
+        # Initialize Claude Code automation
+        automation = ClaudeCodeAutomation(project_path=".")
+        await automation.initialize()
         
-        if task_type == "ui_styling":
-            return await handle_ui_styling_task(task)
-        elif task_type == "react_component":
-            return await handle_react_component_task(task)
-        elif task_type == "code_creation":
-            return await handle_code_creation_task(task)
-        elif task_type == "bug_fix":
-            return await handle_bug_fix_task(task)
-        elif task_type == "testing":
-            return await handle_testing_task(task)
-        elif task_type == "documentation":
-            return await handle_documentation_task(task)
+        # Create a formatted task for Claude Code
+        claude_task = {
+            "task_id": task.get("id", ""),
+            "title": task_title,
+            "description": task_description,
+            "requirements": task.get("requirements", []),
+            "acceptance_criteria": task.get("acceptance_criteria", [])
+        }
+        
+        # Use Claude Code to implement the task
+        result = await automation.claude_code_implement(claude_task)
+        
+        if result["status"] in ["implemented", "simulated_implementation"]:
+            logger.info(f"Task completed successfully: {task_title}")
+            
+            # Add command output to chat if available
+            execution_result = result.get("execution_result", {})
+            if execution_result and execution_result.get("user_visible_output"):
+                output_message = {
+                    "id": str(uuid.uuid4()),
+                    "type": "system",
+                    "content": f"✅ Task '{task_title}' completed!\n\n{execution_result['user_visible_output']}",
+                    "timestamp": datetime.now().isoformat()
+                }
+                chat_messages.append(output_message)
+                
+                # Broadcast the system message
+                await broadcast_message({
+                    "type": "chat_message",
+                    "data": output_message
+                })
+            
+            return True
         else:
-            # Generic task - try to create a simple implementation
-            return await handle_generic_task(task)
+            logger.error(f"Task implementation failed: {result.get('output', 'Unknown error')}")
+            return False
             
     except Exception as e:
         logger.error(f"Error processing task {task.get('id')}: {e}")
         return False
 
-def analyze_task_type(description: str) -> str:
-    """Analyze task description to determine task type"""
-    description_lower = description.lower()
-    title_lower = description.lower()  # We'll get title from task if needed
-    
-    # Check for UI/styling changes first (including visibility issues)
-    if any(phrase in description_lower for phrase in ["background", "color", "style", "css", "theme", "appearance", "ui", "interface", "design", "visibility", "visible", "see", "contrast"]):
-        return "ui_styling"
-    # Check for React components 
-    elif any(phrase in description_lower for phrase in ["login", "form", "button", "component", "modal", "page", "react"]):
-        return "react_component"
-    elif any(phrase in description_lower for phrase in ["unit test", "integration test", "write test", "test for", "testing", "test coverage"]):
-        return "testing"
-    elif any(word in description_lower for word in ["document", "readme", "guide", "docs", "documentation"]):
-        return "documentation"
-    elif any(word in description_lower for word in ["fix", "bug", "error", "issue", "broken", "repair"]):
-        return "bug_fix"
-    elif any(word in description_lower for word in ["api", "endpoint", "function", "create", "implement", "build", "add"]):
-        return "code_creation"
-    else:
-        return "generic"
+# Removed hardcoded task type analysis - now handled by Claude Code
 
 async def handle_ui_styling_task(task: Dict) -> bool:
-    """Handle UI styling changes like background color, theme changes"""
+    """Handle UI styling changes like background color, theme changes, title changes"""
     try:
-        description = task.get("description", "").lower()
-        title = task.get("title", "").lower()
+        description = str(task.get("description", "")).lower()
+        title = str(task.get("title", "")).lower()
         
         logger.info(f"Processing UI styling task: {task.get('title')}")
         
+        # Handle title changes
+        if "title" in description or "title" in title:
+            return await update_html_title(task)
         # Analyze what styling change is needed
-        if "background" in description and "red" in description:
+        elif "background" in description and "red" in description:
             return await change_background_color("red")
         elif "background" in description:
             # Extract color from description
@@ -626,8 +631,8 @@ async def handle_ui_styling_task(task: Dict) -> bool:
 async def handle_react_component_task(task: Dict) -> bool:
     """Handle React component creation/modification"""
     try:
-        description = task.get("description", "").lower()
-        title = task.get("title", "").lower()
+        description = str(task.get("description", "")).lower()
+        title = str(task.get("title", "")).lower()
         
         logger.info(f"Processing React component task: {task.get('title')}")
         
@@ -648,41 +653,6 @@ async def change_background_color(color: str) -> bool:
     """DISABLED: Change the background color of the main application"""
     logger.info(f"Background color change to {color} was requested but disabled to prevent crude styling")
     return False
-    # DISABLED CRUDE CSS AUTOMATION - Use Claude Code for professional styling instead
-    # This function was generating * { background-color: {color} !important; } which overrides everything
-        
-        # Remove any existing auto-generated background rules
-        lines = content.split('\n')
-        filtered_lines = []
-        skip_next = False
-        
-        for line in lines:
-            if "Auto-generated background color change" in line:
-                skip_next = True
-                continue
-            if skip_next and line.strip() == "}":
-                skip_next = False
-                continue
-            if not skip_next:
-                filtered_lines.append(line)
-        
-        # Add new rule
-        updated_content = '\n'.join(filtered_lines) + new_rule
-        
-        # Write back to file
-        with open(css_file, 'w') as f:
-            f.write(updated_content)
-        
-        logger.info(f"Updated background color to {color} in {css_file}")
-        
-        # Rebuild the frontend
-        await rebuild_frontend()
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error changing background color: {e}")
-        return False
 
 async def create_login_component() -> bool:
     """Create a login form component"""
@@ -811,90 +781,6 @@ async def fix_visibility_issues() -> bool:
     return False
     # DISABLED CRUDE CSS AUTOMATION - Use Claude Code for professional styling instead
     # This function was generating !important overrides that conflict with professional CSS
-        
-        # Read current CSS
-        if os.path.exists(css_file):
-            with open(css_file, 'r') as f:
-                content = f.read()
-        else:
-            content = ""
-        
-        # Remove problematic all-black styling
-        lines = content.split('\n')
-        filtered_lines = []
-        skip_block = False
-        
-        for line in lines:
-            if "* {" in line and "background-color" in lines[lines.index(line) + 1] if lines.index(line) + 1 < len(lines) else False:
-                skip_block = True
-                continue
-            if skip_block and line.strip() == "}":
-                skip_block = False
-                continue
-            if not skip_block:
-                filtered_lines.append(line)
-        
-        # Add proper visibility fixes
-        visibility_css = """
-/* Auto-generated visibility improvements */
-body {
-    background-color: #f8f9fa !important;
-    color: #212529 !important;
-}
-
-input, textarea, select {
-    background-color: white !important;
-    color: #212529 !important;
-    border: 1px solid #ced4da !important;
-    padding: 8px 12px !important;
-}
-
-input:focus, textarea:focus, select:focus {
-    background-color: white !important;
-    color: #212529 !important;
-    border-color: #007bff !important;
-    outline: none !important;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25) !important;
-}
-
-button {
-    background-color: #007bff !important;
-    color: white !important;
-    border: 1px solid #007bff !important;
-    padding: 8px 16px !important;
-}
-
-button:hover {
-    background-color: #0056b3 !important;
-    border-color: #0056b3 !important;
-}
-
-.text-gray-900, .text-gray-800, .text-gray-700 {
-    color: #212529 !important;
-}
-
-.bg-white {
-    background-color: white !important;
-}
-
-.bg-gray-100 {
-    background-color: #f8f9fa !important;
-}
-"""
-        
-        # Write improved CSS
-        updated_content = '\n'.join(filtered_lines) + visibility_css
-        
-        with open(css_file, 'w') as f:
-            f.write(updated_content)
-        
-        logger.info("Applied visibility improvements - removed black backgrounds, added proper contrast")
-        await rebuild_frontend()
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error fixing visibility: {e}")
-        return False
 
 async def create_button_component(task: Dict) -> bool:
     """Create a button component"""
