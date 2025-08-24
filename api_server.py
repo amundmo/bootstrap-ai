@@ -8,6 +8,9 @@ import asyncio
 import json
 import logging
 import uuid
+import os
+import requests
+import subprocess
 from datetime import datetime
 from typing import Dict, List, Optional
 from pathlib import Path
@@ -17,12 +20,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
 from claude_automation import ClaudeCodeAutomation
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Initialize OpenAI client
+openai_client = AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 app = FastAPI(title="Claude Code Automation API", version="1.0.0")
 
@@ -108,68 +121,177 @@ def create_task(task_data: Dict) -> Dict:
     tasks[task_id] = task
     return task
 
-async def simulate_llm_task_creation(message: str) -> Dict:
-    """Simulate LLM-powered task creation from user message"""
-    # In a real implementation, this would call an LLM API
-    # For now, we'll parse the message and create a structured task
-    
-    # Remove the sleep to prevent hanging
-    # await asyncio.sleep(1)  # Simulate API call delay
-    
-    # Simple keyword-based task creation
-    title = f"Automated Task: {message[:50]}..."
-    description = f"Task created from user request: {message}"
-    
-    requirements = []
-    acceptance_criteria = []
-    priority = "medium"
-    
-    # Basic keyword detection for requirements
-    if "api" in message.lower():
-        requirements.extend([
-            "Create REST API endpoints",
-            "Add proper error handling",
-            "Include API documentation"
+async def chat_with_openai(message: str, conversation_history: List[Dict]) -> Dict:
+    """Have a normal conversation with OpenAI GPT-4"""
+    try:
+        system_prompt = """You are a helpful software development assistant working within the Claude Code Automation system. You have access to development tools and can help create and manage development tasks.
+
+Context: You're working with a modern web development environment that includes:
+- React/TypeScript frontend
+- Python backend with FastAPI
+- Modern web technologies (HTML, CSS, JavaScript)
+- Development automation tools
+- MCP (Model Context Protocol) integration
+
+When users ask for help with development tasks:
+1. Be conversational and helpful, but decisive
+2. For simple requests, acknowledge you'll create the task and proceed
+3. Make reasonable assumptions for common development requests
+4. Only ask clarifying questions for truly complex or ambiguous requests
+5. Tasks will be automatically created based on our conversation
+
+Examples of how to respond:
+- "Add a button" → "Great! I'll create a task to add a button component."
+- "Change background to red" → "Perfect! I'll create a task to update the background color."
+- "Build user authentication" → Ask about specific auth requirements
+
+Be proactive and assumptive rather than overly cautious."""
+
+        # Build message history for context
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add conversation history (last 10 messages to keep context manageable)
+        for msg in conversation_history[-10:]:
+            if msg["type"] == "user":
+                messages.append({"role": "user", "content": msg["content"]})
+            elif msg["type"] == "assistant":
+                messages.append({"role": "assistant", "content": msg["content"]})
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+
+        response = await openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=800
+        )
+        
+        assistant_response = response.choices[0].message.content.strip()
+        logger.info(f"OpenAI chat response: {assistant_response}")
+        
+        return {
+            "content": assistant_response,
+            "should_create_tasks": False,  # We'll add task creation logic separately
+            "suggested_tasks": []
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in chat with OpenAI: {e}")
+        return {
+            "content": "I'm sorry, I'm having trouble processing your request right now. Please try again.",
+            "should_create_tasks": False,
+            "suggested_tasks": []
+        }
+
+async def analyze_conversation_for_tasks(conversation_history: List[Dict]) -> Dict:
+    """Analyze conversation to determine if tasks should be created"""
+    try:
+        # Get recent conversation context
+        recent_messages = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
+        
+        conversation_text = "\n".join([
+            f"{msg['type']}: {msg['content']}" for msg in recent_messages
         ])
-        acceptance_criteria.extend([
-            "API endpoints respond correctly",
-            "Error responses are properly formatted",
-            "API documentation is complete"
-        ])
+        
+        system_prompt = """You are an AI agent that analyzes conversations to determine when development tasks should be created.
+
+Analyze this conversation and determine if:
+1. The user has provided enough detail for specific development tasks
+2. What tasks should be created based on the conversation
+3. The priority and requirements for each task
+
+Respond with JSON in this format:
+{
+    "should_create_tasks": true/false,
+    "reasoning": "Brief explanation of your analysis",
+    "tasks": [
+        {
+            "title": "Task title",
+            "description": "Detailed description",
+            "requirements": ["req1", "req2"],
+            "acceptance_criteria": ["criteria1", "criteria2"],
+            "priority": "critical|high|medium|low"
+        }
+    ]
+}
+
+Guidelines for task creation:
+- CREATE TASKS IMMEDIATELY for simple, actionable requests like "change background to red"
+- For styling changes, UI modifications, or simple features - create tasks right away
+- Don't wait for perfect specifications - make reasonable assumptions
+- Only skip task creation if the request is truly vague like "help me" or "what can you do?"
+- Be very proactive - err on the side of creating tasks rather than waiting"""
+
+        response = await openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Analyze this conversation for task creation:\n\n{conversation_text}"}
+            ],
+            temperature=0.3,
+            max_tokens=1000
+        )
+        
+        analysis_text = response.choices[0].message.content.strip()
+        
+        # Clean up JSON
+        if analysis_text.startswith("```json"):
+            analysis_text = analysis_text[7:-3].strip()
+        elif analysis_text.startswith("```"):
+            analysis_text = analysis_text[3:-3].strip()
+        
+        analysis = json.loads(analysis_text)
+        return analysis
+        
+    except Exception as e:
+        logger.error(f"Error analyzing conversation for tasks: {e}")
+        return {"should_create_tasks": False, "reasoning": "Analysis failed", "tasks": []}
+
+async def create_tasks_via_mcp(tasks: List[Dict]) -> List[Dict]:
+    """Create tasks using MCP tools (Archon)"""
+    created_tasks = []
     
-    if "test" in message.lower():
-        requirements.extend([
-            "Write unit tests",
-            "Add integration tests",
-            "Ensure test coverage > 80%"
-        ])
-        acceptance_criteria.extend([
-            "All tests pass",
-            "Test coverage meets requirements"
-        ])
-    
-    if "database" in message.lower() or "db" in message.lower():
-        requirements.extend([
-            "Design database schema",
-            "Create migrations",
-            "Add database connection handling"
-        ])
-    
-    # Determine priority based on keywords
-    if any(word in message.lower() for word in ["urgent", "critical", "asap", "immediately"]):
-        priority = "critical"
-    elif any(word in message.lower() for word in ["important", "high", "priority"]):
-        priority = "high"
-    elif any(word in message.lower() for word in ["low", "minor", "later"]):
-        priority = "low"
-    
-    return {
-        "title": title,
-        "description": description,
-        "requirements": requirements,
-        "acceptance_criteria": acceptance_criteria,
-        "priority": priority
-    }
+    try:
+        archon_url = os.getenv("MCP_ARCHON_URL", "http://localhost:8181")
+        
+        for task_data in tasks:
+            # Try to create task via Archon MCP
+            try:
+                response = requests.post(
+                    f"{archon_url}/projects/tasks",
+                    json={
+                        "title": task_data["title"],
+                        "description": task_data["description"],
+                        "requirements": task_data.get("requirements", []),
+                        "acceptance_criteria": task_data.get("acceptance_criteria", []),
+                        "priority": task_data.get("priority", "medium"),
+                        "status": "pending"
+                    },
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    mcp_task = response.json()
+                    created_tasks.append(mcp_task)
+                    logger.info(f"Created task via MCP: {task_data['title']}")
+                else:
+                    # Fallback to local task creation
+                    local_task = create_task(task_data)
+                    created_tasks.append(local_task)
+                    logger.warning(f"MCP failed, created local task: {task_data['title']}")
+                    
+            except Exception as e:
+                # Fallback to local task creation
+                logger.error(f"MCP task creation failed: {e}")
+                local_task = create_task(task_data)
+                created_tasks.append(local_task)
+        
+        return created_tasks
+        
+    except Exception as e:
+        logger.error(f"Error in MCP task creation: {e}")
+        return []
 
 # WebSocket endpoint
 @app.websocket("/ws")
@@ -262,9 +384,9 @@ async def delete_task(task_id: str):
     
     return {"message": "Task deleted successfully"}
 
-@app.post("/api/chat/create-task")
-async def chat_create_task(request: TaskCreationRequest):
-    """Create a task from chat message using LLM"""
+@app.post("/api/chat/message")
+async def chat_message(request: TaskCreationRequest):
+    """Have a conversation with the AI assistant"""
     try:
         # Add user message to chat history
         user_message = {
@@ -281,43 +403,67 @@ async def chat_create_task(request: TaskCreationRequest):
             "data": user_message
         })
         
-        # Generate task using LLM simulation
-        task_data = await simulate_llm_task_creation(request.message)
-        task = create_task(task_data)
+        # Get conversational response from OpenAI
+        chat_response = await chat_with_openai(request.message, chat_messages)
         
         # Create assistant response
         assistant_message = {
             "id": str(uuid.uuid4()),
             "type": "assistant",
-            "content": f"I've created a new task: '{task['title']}'\n\nThis task includes {len(task['requirements'])} requirements and {len(task['acceptance_criteria'])} acceptance criteria. The task has been added to your automation queue with {task['priority']} priority.",
-            "timestamp": datetime.now().isoformat(),
-            "task_id": task["id"]
+            "content": chat_response["content"],
+            "timestamp": datetime.now().isoformat()
         }
         chat_messages.append(assistant_message)
         
-        # Broadcast assistant message and task creation
+        # Broadcast assistant message
         await broadcast_message({
             "type": "chat_message",
             "data": assistant_message
         })
         
-        await broadcast_message({
-            "type": "task_created",
-            "data": task
-        })
+        # Analyze conversation to see if tasks should be created
+        analysis = await analyze_conversation_for_tasks(chat_messages)
+        created_tasks = []
+        
+        if analysis.get("should_create_tasks", False) and analysis.get("tasks"):
+            # Create tasks via MCP
+            created_tasks = await create_tasks_via_mcp(analysis["tasks"])
+            
+            # Broadcast task creation events
+            for task in created_tasks:
+                await broadcast_message({
+                    "type": "task_created",
+                    "data": task
+                })
+            
+            # Add a system message about task creation
+            if created_tasks:
+                task_creation_message = {
+                    "id": str(uuid.uuid4()),
+                    "type": "system",
+                    "content": f"✅ I've automatically created {len(created_tasks)} task(s) based on our conversation: {', '.join([t['title'] for t in created_tasks])}",
+                    "timestamp": datetime.now().isoformat()
+                }
+                chat_messages.append(task_creation_message)
+                
+                await broadcast_message({
+                    "type": "chat_message",
+                    "data": task_creation_message
+                })
         
         return {
-            "task": task,
             "message": assistant_message,
-            "explanation": "Task created successfully from your message"
+            "conversation_continues": True,
+            "tasks_created": len(created_tasks),
+            "analysis": analysis.get("reasoning", "")
         }
     
     except Exception as e:
-        logger.error(f"Error creating task from chat: {e}")
+        logger.error(f"Error in chat conversation: {e}")
         error_message = {
             "id": str(uuid.uuid4()),
             "type": "system",
-            "content": f"Sorry, I encountered an error while creating the task: {str(e)}",
+            "content": f"Sorry, I encountered an error: {str(e)}",
             "timestamp": datetime.now().isoformat()
         }
         chat_messages.append(error_message)
@@ -328,6 +474,12 @@ async def chat_create_task(request: TaskCreationRequest):
         })
         
         raise HTTPException(status_code=500, detail=str(e))
+
+# Keep the old endpoint for backward compatibility but redirect to conversation
+@app.post("/api/chat/create-task")
+async def chat_create_task_legacy(request: TaskCreationRequest):
+    """Legacy endpoint - redirects to conversational interface"""
+    return await chat_message(request)
 
 @app.get("/api/chat/messages")
 async def get_chat_messages():
@@ -400,7 +552,11 @@ async def process_task_real(task: Dict) -> bool:
         # Analyze task type and requirements
         task_type = analyze_task_type(task_description)
         
-        if task_type == "code_creation":
+        if task_type == "ui_styling":
+            return await handle_ui_styling_task(task)
+        elif task_type == "react_component":
+            return await handle_react_component_task(task)
+        elif task_type == "code_creation":
             return await handle_code_creation_task(task)
         elif task_type == "bug_fix":
             return await handle_bug_fix_task(task)
@@ -420,17 +576,349 @@ def analyze_task_type(description: str) -> str:
     """Analyze task description to determine task type"""
     description_lower = description.lower()
     
-    # Check for testing tasks first (more specific)
-    if any(phrase in description_lower for phrase in ["unit test", "integration test", "write test", "test for", "testing", "test coverage"]):
+    # Check for UI/styling changes first
+    if any(phrase in description_lower for phrase in ["background", "color", "style", "css", "theme", "appearance", "ui", "interface", "design"]):
+        return "ui_styling"
+    elif any(phrase in description_lower for phrase in ["login", "form", "button", "component", "modal", "page", "react"]):
+        return "react_component"
+    elif any(phrase in description_lower for phrase in ["unit test", "integration test", "write test", "test for", "testing", "test coverage"]):
         return "testing"
     elif any(word in description_lower for word in ["document", "readme", "guide", "docs", "documentation"]):
         return "documentation"
     elif any(word in description_lower for word in ["fix", "bug", "error", "issue", "broken", "repair"]):
         return "bug_fix"
-    elif any(word in description_lower for word in ["api", "endpoint", "function", "component", "create", "implement", "build", "add"]):
+    elif any(word in description_lower for word in ["api", "endpoint", "function", "create", "implement", "build", "add"]):
         return "code_creation"
     else:
         return "generic"
+
+async def handle_ui_styling_task(task: Dict) -> bool:
+    """Handle UI styling changes like background color, theme changes"""
+    try:
+        description = task.get("description", "").lower()
+        title = task.get("title", "").lower()
+        
+        logger.info(f"Processing UI styling task: {task.get('title')}")
+        
+        # Analyze what styling change is needed
+        if "background" in description and "red" in description:
+            return await change_background_color("red")
+        elif "background" in description:
+            # Extract color from description
+            colors = ["blue", "green", "red", "yellow", "purple", "black", "white", "gray"]
+            color = "blue"  # default
+            for c in colors:
+                if c in description:
+                    color = c
+                    break
+            return await change_background_color(color)
+        elif "color" in description or "theme" in description:
+            return await apply_general_styling_change(task)
+        else:
+            return await apply_general_styling_change(task)
+            
+    except Exception as e:
+        logger.error(f"Error handling UI styling task: {e}")
+        return False
+
+async def handle_react_component_task(task: Dict) -> bool:
+    """Handle React component creation/modification"""
+    try:
+        description = task.get("description", "").lower()
+        title = task.get("title", "").lower()
+        
+        logger.info(f"Processing React component task: {task.get('title')}")
+        
+        if "login" in description or "login" in title:
+            return await create_login_component()
+        elif "button" in description:
+            return await create_button_component(task)
+        elif "form" in description:
+            return await create_form_component(task)
+        else:
+            return await create_generic_component(task)
+            
+    except Exception as e:
+        logger.error(f"Error handling React component task: {e}")
+        return False
+
+async def change_background_color(color: str) -> bool:
+    """Change the background color of the main application"""
+    try:
+        css_file = "/home/john/dev/personal/bootstrap/src/index.css"
+        
+        # Read current CSS
+        if os.path.exists(css_file):
+            with open(css_file, 'r') as f:
+                content = f.read()
+        else:
+            content = ""
+        
+        # Add or update background color
+        new_rule = f"""
+/* Auto-generated background color change */
+body {{
+    background-color: {color} !important;
+}}
+"""
+        
+        # Remove any existing auto-generated background rules
+        lines = content.split('\n')
+        filtered_lines = []
+        skip_next = False
+        
+        for line in lines:
+            if "Auto-generated background color change" in line:
+                skip_next = True
+                continue
+            if skip_next and line.strip() == "}":
+                skip_next = False
+                continue
+            if not skip_next:
+                filtered_lines.append(line)
+        
+        # Add new rule
+        updated_content = '\n'.join(filtered_lines) + new_rule
+        
+        # Write back to file
+        with open(css_file, 'w') as f:
+            f.write(updated_content)
+        
+        logger.info(f"Updated background color to {color} in {css_file}")
+        
+        # Rebuild the frontend
+        await rebuild_frontend()
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error changing background color: {e}")
+        return False
+
+async def create_login_component() -> bool:
+    """Create a login form component"""
+    try:
+        component_file = "/home/john/dev/personal/bootstrap/src/components/LoginForm.tsx"
+        
+        component_code = '''import React, { useState } from 'react';
+
+interface LoginFormProps {
+  onLogin: (username: string, password: string) => void;
+}
+
+export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onLogin(username, password);
+  };
+
+  return (
+    <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
+      <h2 className="text-2xl font-bold mb-6 text-center">Login</h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+            Username
+          </label>
+          <input
+            type="text"
+            id="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            Password
+          </label>
+          <input
+            type="password"
+            id="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Login
+        </button>
+      </form>
+    </div>
+  );
+};
+'''
+        
+        # Create components directory if it doesn't exist
+        components_dir = "/home/john/dev/personal/bootstrap/src/components"
+        os.makedirs(components_dir, exist_ok=True)
+        
+        # Write the component
+        with open(component_file, 'w') as f:
+            f.write(component_code)
+        
+        logger.info(f"Created LoginForm component: {component_file}")
+        
+        # Add to App.tsx for immediate visibility
+        await add_component_to_app("LoginForm")
+        
+        # Rebuild the frontend
+        await rebuild_frontend()
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error creating login component: {e}")
+        return False
+
+async def apply_general_styling_change(task: Dict) -> bool:
+    """Apply general styling changes"""
+    try:
+        # Create a simple style change as placeholder
+        css_file = "/home/john/dev/personal/bootstrap/src/index.css"
+        
+        new_rule = f"""
+/* Auto-generated styling change for: {task.get('title', 'Unknown task')} */
+.task-styling-change {{
+    /* Applied styling change */
+    border: 2px solid #007bff;
+    padding: 10px;
+    margin: 10px;
+}}
+"""
+        
+        if os.path.exists(css_file):
+            with open(css_file, 'a') as f:
+                f.write(new_rule)
+        else:
+            with open(css_file, 'w') as f:
+                f.write(new_rule)
+        
+        logger.info(f"Applied general styling change for: {task.get('title')}")
+        await rebuild_frontend()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error applying styling change: {e}")
+        return False
+
+async def create_button_component(task: Dict) -> bool:
+    """Create a button component"""
+    try:
+        # Add a simple button to the main app
+        return await add_component_to_app("SimpleButton", """
+const SimpleButton = () => (
+  <button 
+    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded m-4"
+    onClick={() => alert('Hello!')}
+  >
+    Hello Button
+  </button>
+);""")
+        
+    except Exception as e:
+        logger.error(f"Error creating button component: {e}")
+        return False
+
+async def create_form_component(task: Dict) -> bool:
+    """Create a form component"""
+    try:
+        return await create_login_component()  # Reuse login form for now
+        
+    except Exception as e:
+        logger.error(f"Error creating form component: {e}")
+        return False
+
+async def create_generic_component(task: Dict) -> bool:
+    """Create a generic component"""
+    try:
+        component_name = f"Task{task.get('id', 'Unknown')[:8]}"
+        component_code = f"""
+const {component_name} = () => (
+  <div className="p-4 m-4 border border-gray-300 rounded">
+    <h3 className="text-lg font-semibold">{task.get('title', 'Generated Component')}</h3>
+    <p className="text-gray-600">{task.get('description', 'This component was auto-generated.')}</p>
+  </div>
+);"""
+        
+        return await add_component_to_app(component_name, component_code)
+        
+    except Exception as e:
+        logger.error(f"Error creating generic component: {e}")
+        return False
+
+async def add_component_to_app(component_name: str, component_code: str = "") -> bool:
+    """Add a component to the main App.tsx file"""
+    try:
+        app_file = "/home/john/dev/personal/bootstrap/src/App.tsx"
+        
+        # Read current App.tsx
+        with open(app_file, 'r') as f:
+            content = f.read()
+        
+        # Add component code before the App function if provided
+        if component_code:
+            import_section = "import React, { useState, useEffect } from 'react';"
+            if import_section in content:
+                content = content.replace(
+                    import_section,
+                    f"{import_section}\n\n{component_code}"
+                )
+        
+        # Add component to JSX (before closing main div)
+        component_jsx = f"        <{component_name} />"
+        
+        # Find the last closing div and add component before it
+        if "</main>" in content:
+            content = content.replace("</main>", f"        {component_jsx}\n      </main>")
+        elif "</div>" in content:
+            # Find the last </div> and add component before it
+            last_div_pos = content.rfind("</div>")
+            if last_div_pos != -1:
+                content = content[:last_div_pos] + f"      {component_jsx}\n    " + content[last_div_pos:]
+        
+        # Write back to file
+        with open(app_file, 'w') as f:
+            f.write(content)
+        
+        logger.info(f"Added {component_name} to App.tsx")
+        await rebuild_frontend()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error adding component to app: {e}")
+        return False
+
+async def rebuild_frontend() -> bool:
+    """Rebuild the React frontend"""
+    try:
+        logger.info("Rebuilding frontend...")
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd="/home/john/dev/personal/bootstrap",
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode == 0:
+            logger.info("Frontend rebuilt successfully")
+            return True
+        else:
+            logger.error(f"Frontend build failed: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error rebuilding frontend: {e}")
+        return False
 
 async def handle_code_creation_task(task: Dict) -> bool:
     """Handle code creation tasks"""

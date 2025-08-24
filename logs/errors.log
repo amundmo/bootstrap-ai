@@ -11,3 +11,49 @@
 2025-08-24 19:44:03,052 - root - ERROR - run_continuous_loop:553 - Task failed: Unknown error
 2025-08-24 19:44:13,073 - root - ERROR - run_continuous_loop:553 - Task failed: Unknown error
 2025-08-24 19:44:23,094 - root - ERROR - run_continuous_loop:553 - Task failed: Unknown error
+2025-08-24 20:49:52,866 - api_server - ERROR - websocket_endpoint:196 - WebSocket error: 1012
+2025-08-24 20:50:02,613 - api_server - ERROR - websocket_endpoint:202 - WebSocket error: 1012
+2025-08-24 20:51:03,321 - api_server - ERROR - websocket_endpoint:207 - WebSocket error: 1012
+2025-08-24 20:51:18,824 - api_server - ERROR - websocket_endpoint:199 - WebSocket error: 1012
+2025-08-24 20:51:41,139 - api_server - ERROR - websocket_endpoint:199 - WebSocket error: 1012
+2025-08-24 20:53:14,199 - api_server - ERROR - websocket_endpoint:199 - WebSocket error: 1001
+2025-08-24 20:53:15,508 - api_server - ERROR - websocket_endpoint:199 - WebSocket error: 1001
+2025-08-24 20:53:23,504 - api_server - ERROR - create_task_with_openai:167 - Error creating task with OpenAI: Expecting value: line 1 column 1 (char 0)
+2025-08-24 20:54:07,506 - api_server - ERROR - websocket_endpoint:199 - WebSocket error: 1012
+2025-08-24 20:55:10,863 - api_server - ERROR - create_task_with_openai:174 - Error creating task with OpenAI: Expecting value: line 1 column 1 (char 0)
+2025-08-24 20:55:19,676 - api_server - ERROR - websocket_endpoint:206 - WebSocket error: 1001
+2025-08-24 20:55:20,636 - api_server - ERROR - websocket_endpoint:206 - WebSocket error: 1001
+2025-08-24 20:55:25,291 - api_server - ERROR - create_task_with_openai:174 - Error creating task with OpenAI: Expecting value: line 1 column 1 (char 0)
+2025-08-24 20:56:26,500 - api_server - ERROR - websocket_endpoint:206 - WebSocket error: 1012
+2025-08-24 21:00:55,310 - api_server - ERROR - websocket_endpoint:210 - WebSocket error: 1012
+2025-08-24 21:02:00,189 - api_server - ERROR - websocket_endpoint:192 - WebSocket error: 1012
+2025-08-24 21:02:16,290 - api_server - ERROR - websocket_endpoint:192 - WebSocket error: 1012
+2025-08-24 21:13:19,348 - api_server - ERROR - websocket_endpoint:193 - WebSocket error: 1012
+2025-08-24 21:13:35,790 - api_server - ERROR - websocket_endpoint:297 - WebSocket error: 1012
+2025-08-24 21:18:33,031 - api_server - ERROR - websocket_endpoint:297 - WebSocket error: 1012
+2025-08-24 21:18:33,032 - api_server - ERROR - websocket_endpoint:297 - WebSocket error: 1012
+2025-08-24 21:18:56,136 - api_server - ERROR - websocket_endpoint:312 - WebSocket error: 1012
+2025-08-24 21:18:56,136 - api_server - ERROR - websocket_endpoint:312 - WebSocket error: 1012
+2025-08-24 21:19:23,816 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:19:23,817 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:22:47,654 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:22:47,654 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:25:07,934 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1001
+2025-08-24 21:29:30,059 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:29:30,060 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:29:30,060 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:29:30,060 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:29:40,202 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:29:40,203 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:29:40,203 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:29:40,203 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:26,495 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:26,496 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:26,496 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:26,496 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:36,713 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:36,714 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:36,714 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:30:36,715 - api_server - ERROR - websocket_endpoint:317 - WebSocket error: 1012
+2025-08-24 21:31:52,935 - api_server - ERROR - websocket_endpoint:318 - WebSocket error: 1001
+2025-08-24 21:31:54,200 - api_server - ERROR - websocket_endpoint:318 - WebSocket error: 1001

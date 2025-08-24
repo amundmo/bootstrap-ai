@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Task, TaskCreationRequest, ChatMessage, AutomationStatus } from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8009/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://192.168.1.13:8009/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -42,11 +42,23 @@ export const taskAPI = {
 };
 
 export const chatAPI = {
-  // Create task from chat message
-  createTaskFromMessage: async (request: TaskCreationRequest): Promise<{
-    task: Task;
+  // Send a chat message (conversational)
+  sendMessage: async (request: TaskCreationRequest): Promise<{
     message: ChatMessage;
-    explanation: string;
+    conversation_continues: boolean;
+    tasks_created?: number;
+    analysis?: string;
+  }> => {
+    const response = await api.post('/chat/message', request);
+    return response.data;
+  },
+
+  // Legacy: Create task from chat message (redirects to conversation)
+  createTaskFromMessage: async (request: TaskCreationRequest): Promise<{
+    message: ChatMessage;
+    conversation_continues: boolean;
+    tasks_created?: number;
+    analysis?: string;
   }> => {
     const response = await api.post('/chat/create-task', request);
     return response.data;
@@ -88,7 +100,7 @@ export class WebSocketService {
   private reconnectDelay = 1000;
 
   connect() {
-    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8009/ws';
+    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://192.168.1.13:8009/ws';
     
     try {
       this.ws = new WebSocket(wsUrl);
