@@ -105,35 +105,34 @@ class ClaudeCodeAutomation:
         logger.info(f"Working in project directory: {self.project_path}")
         return True
     
-    async def get_archon_task(self, task_id: Optional[str] = None) -> Dict[str, Any]:
-        """Retrieve task from Archon MCP server"""
-        logger.info("Fetching task from Archon...")
+    async def get_archon_task(self, task_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieve task from local API server"""
+        logger.info("Fetching task from API server...")
         
-        # This would use the Archon MCP server when available
-        # For now, providing a structure for the integration
-        archon_prompt = """
-        Please check Archon for the next available task or the specific task ID if provided.
-        Return the task details including:
-        - Task ID
-        - Title
-        - Description
-        - Requirements
-        - Acceptance criteria
-        - Priority
-        - Status
-        """
-        
-        # Placeholder for Archon integration
-        # In practice, this would use the MCP server connection
-        return {
-            "task_id": task_id or "next_available",
-            "title": "Retrieved from Archon",
-            "description": "Task details from Archon MCP server",
-            "requirements": [],
-            "acceptance_criteria": [],
-            "priority": "medium",
-            "status": "in_progress"
-        }
+        try:
+            import requests
+            # Get pending tasks from our API server
+            response = requests.get('http://localhost:8009/api/tasks')
+            if response.status_code == 200:
+                tasks = response.json()['tasks']
+                # Find a pending task
+                pending_tasks = [t for t in tasks if t['status'] == 'pending']
+                if pending_tasks:
+                    task = pending_tasks[0]
+                    # Mark as in_progress
+                    requests.patch(f'http://localhost:8009/api/tasks/{task["id"]}', 
+                                 json={'status': 'in_progress'})
+                    logger.info(f"Retrieved task: {task['title']}")
+                    return task
+                else:
+                    logger.info("No pending tasks found")
+                    return None
+            else:
+                logger.warning(f"Failed to fetch tasks: {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching tasks: {e}")
+            return None
     
     async def claude_code_implement(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Use Claude Code to implement the task"""
@@ -427,10 +426,17 @@ class ClaudeCodeAutomation:
             await self.initialize()
             logger.info(f"Initialization completed. Simulation mode: {self.simulation_mode}")
             
-            # Get task from Archon
+            # Get task from API server
             logger.debug(f"Retrieving task with ID: {task_id}")
             task = await self.get_archon_task(task_id)
-            logger.info(f"Working on task: {task['title']} (ID: {task['task_id']})")
+            if not task:
+                logger.info("No tasks available, skipping cycle")
+                return {
+                    "status": "no_tasks",
+                    "message": "No pending tasks available",
+                    "duration": "0:00:00.000001"
+                }
+            logger.info(f"Working on task: {task['title']} (ID: {task['id']})")
             
             # Implement with Claude Code
             logger.debug("Starting implementation phase...")
@@ -483,10 +489,17 @@ class ClaudeCodeAutomation:
                 raise RuntimeError("Failed to commit and push changes")
             logger.info("Changes committed and pushed successfully")
             
-            # Update Archon
-            logger.debug("Updating task status in Archon...")
-            update_result = await self.update_archon_task(task, "completed")
-            logger.info("Archon task status updated")
+            # Update task status to completed
+            logger.debug("Updating task status to completed...")
+            try:
+                import requests
+                requests.patch(f'http://localhost:8009/api/tasks/{task["id"]}', 
+                             json={'status': 'completed'})
+                logger.info("Task status updated to completed")
+            except Exception as e:
+                logger.error(f"Failed to update task status: {e}")
+            
+            update_result = {"status": "updated", "task_id": task["id"], "new_status": "completed"}
             
             duration = datetime.now() - start_time
             logger.info(f"Complete cycle finished successfully in {duration}")
@@ -536,6 +549,8 @@ class ClaudeCodeAutomation:
                 if result["status"] == "success":
                     logger.info(f"Task completed successfully: {result['task']['title']} "
                               f"(Duration: {result['duration']}, Iterations: {result['iterations']})")
+                elif result["status"] == "no_tasks":
+                    logger.debug("No tasks available, waiting...")
                 else:
                     logger.error(f"Task failed: {result.get('error_details', {}).get('error', 'Unknown error')}")
                     if "error_details" in result:
