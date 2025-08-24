@@ -550,7 +550,7 @@ async def process_task_real(task: Dict) -> bool:
         logger.info(f"Starting real task processing: {task_title}")
         
         # Analyze task type and requirements
-        task_type = analyze_task_type(task_description)
+        task_type = analyze_task_type(f"{task_title} {task_description}")
         
         if task_type == "ui_styling":
             return await handle_ui_styling_task(task)
@@ -575,12 +575,14 @@ async def process_task_real(task: Dict) -> bool:
 def analyze_task_type(description: str) -> str:
     """Analyze task description to determine task type"""
     description_lower = description.lower()
+    title_lower = description.lower()  # We'll get title from task if needed
     
-    # Check for UI/styling changes first
-    if any(phrase in description_lower for phrase in ["background", "color", "style", "css", "theme", "appearance", "ui", "interface", "design"]):
-        return "ui_styling"
-    elif any(phrase in description_lower for phrase in ["login", "form", "button", "component", "modal", "page", "react"]):
+    # Check for React components first (more specific)
+    if any(phrase in description_lower for phrase in ["login", "form", "button", "component", "modal", "page", "react"]):
         return "react_component"
+    # Check for UI/styling changes 
+    elif any(phrase in description_lower for phrase in ["background", "color", "style", "css", "theme", "appearance", "ui", "interface", "design"]):
+        return "ui_styling"
     elif any(phrase in description_lower for phrase in ["unit test", "integration test", "write test", "test for", "testing", "test coverage"]):
         return "testing"
     elif any(word in description_lower for word in ["document", "readme", "guide", "docs", "documentation"]):
@@ -654,10 +656,15 @@ async def change_background_color(color: str) -> bool:
         else:
             content = ""
         
-        # Add or update background color
+        # Add or update background color with maximum specificity
         new_rule = f"""
 /* Auto-generated background color change */
-body {{
+html, body, #root, .App {{
+    background-color: {color} !important;
+}}
+
+/* Force background color on all elements */
+* {{
     background-color: {color} !important;
 }}
 """
